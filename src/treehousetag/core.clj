@@ -23,7 +23,9 @@
   (GET "/users/:id" [id]
     (user-json (nn/get (Long/parseLong id))))
 
-  (POST "/users" [])
+  (POST "/users" [:as req]
+    (let [body (parse-string (slurp (:body req)))]
+      (user-json (nn/create body))))
 
   (PUT "/users/:id/addFriend" [id :as req]
     (let [friend-id ((parse-string (slurp (:body req))) "friendId")]
