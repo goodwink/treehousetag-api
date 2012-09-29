@@ -41,17 +41,14 @@
         (user-json (nn/get (Long/parseLong id))))))
 
   (PUT "/users/:id/addChild" [id :as req]
-    (let [child-id ((parse-string (slurp (:body req))) "childId")]
+    (let [body (parse-string (slurp (:body req)))
+          child-id (:id (nn/create body))]
       (do
         (nr/create {:id id} {:id child-id} :child)
-        (user-json (nn/get (Long/parseLong id))))))
+        (child-json (nn/get (Long/parseLong id))))))
 
   (GET "/children/:id" [id]
     (child-json (nn/get (Long/parseLong id))))
-
-  (POST "/children" [:as req]
-    (let [body (parse-string (slurp (:body req)))]
-      (child-json (nn/create body))))
 
   (PUT "/children/:id/addFriend" [id :as req]
     (let [friend-id ((parse-string (slurp (:body req))) "friendId")]
