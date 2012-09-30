@@ -31,7 +31,17 @@
         interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
     (generate-string (merge {:id (:id node) :friends friends :friends-of friends-of :parents parents :interests interests} (:data node)))))
 
-(defn activity-json [node]
+(defn place-json [node]
+  (let [businesses (map (partial relationship-other-id node) (nr/outgoing-for node :types [:business]))
+        interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
+    (generate-string (merge {:id (:id node) :businesses businesses :interests interests} (:data node)))))
+
+(defn business-json [node]
+  (let [deals (map (partial relationship-other-id node) (nr/outgoing-for node :types [:deal]))
+        interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
+    (generate-string (merge {:id (:id node) :deals deals :interests interests} (:data node)))))
+
+(defn standard-json [node]
   (generate-string (merge {:id (:id node)} (:data node))))
 
 (defroutes api
@@ -79,9 +89,33 @@
   (GET "/interests" []
     (map interest-json (nn/find "node-type" "interest")))
 
-  (POST "/activities" []
+  (POST "/places" []
     (let [body (parse-string (slurp (:body req)))
-          activity (nn/create (assoc body :type :activity))]
-      (nr/add-to-index activity "node-type" "node-type" "activity")
-      (nsp/add-node-to-layer "location" user)
-      (activity-json activity))))
+          place (nn/create (assoc body :type :place))]
+      (nr/add-to-index place "node-type" "node-type" "place")
+      (nsp/add-node-to-layer "location" place)
+      (place-json place)))
+
+  (PUT "/places/:id/interests/:interest-id" [id interest-id]
+    (do
+      (nr/create {:id id} {:id interest-id} :interest)
+      (place-json (nn/get (Long/parseLong id)))))
+
+  (PUT "/places/:id/businesses/:business-id" [id business-id]
+    (do
+      (nr/create {:id id} {:id business-id} :business)
+      (place-json (nn/get (Long/parseLong id)))))
+
+  (POST "/businesses" []
+    (let [body (parse-string (slurp (:body req)))
+          business (nn/create (assoc body :type :business))]
+      (nr/add-to-index business "node-type" "node-type" "business")
+      (nsp/add-node-to-layer "location" business)
+      (business-json business)))
+
+  (PUT "/businesses/:id/deals" [id :as req]
+    (let [body (parse-string (slurp (:body req)))
+          deal-id (:id (nn/create (assoc body :type :deal)))]
+      (do
+        (nr/create {:id id} {:id deal-id} :deal)
+        (standard-json (nn/get (Long/parseLong id)))))))
