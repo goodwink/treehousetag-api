@@ -19,8 +19,8 @@
 
 (defn- relationship-other-id [node relationship]
   (if (= (:start relationship) (:location-uri node))
-    (last (split (:end relationship) #"/"))
-    (last (split (:start relationship) #"/"))))
+    (Long/parseLong (last (split (:end relationship) #"/")))
+    (Long/parseLong (last (split (:start relationship) #"/")))))
 
 (defn- user-json [node]
   (let [friends (map (partial relationship-other-id node) (nr/outgoing-for node :types [:friend]))
@@ -50,13 +50,13 @@
 
 (defn- create-from-body
   ([req type json-func spatial]
-    (let [body (parse-string (slurp (:body req)))
+    (let [body (parse-string (:body req))
           item (nn/create (assoc body :type type))]
         (nn/add-to-index item "node-type" "node-type" (name type))
         (if spatial (nsp/add-node-to-layer "location" item))
         (json-func item)))
   ([id req type json-func spatial]
-    (let [body (parse-string (slurp (:body req)))
+    (let [body (parse-string (:body req))
           item (nn/create (assoc body :type type))]
       (do
         (nn/add-to-index item "node-type" "node-type" (name type))
@@ -66,7 +66,7 @@
 
 (defn- attach-by-ids [type start end json-func]
   (do
-    (nr/create {:id start} {:id end} type)
+    (nr/create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
     (json-func (nn/get (Long/parseLong start)))))
 
 ;;
@@ -78,7 +78,7 @@
     (user-json (nn/get (Long/parseLong id))))
 
   (POST "/users" [:as req]
-    (create-from-body req :user user-json true)
+    (create-from-body req :user user-json true))
 
   (PUT "/users/:id/friends/:friend-id" [id friend-id]
     (attach-by-ids :friend id friend-id user-json))
@@ -96,10 +96,10 @@
     (attach-by-ids :interest id interest-id child-json))
 
   (POST "/interests" [:as req]
-    (create-from-body req :interest interest-json false))
+    (create-from-body req :interest standard-json false))
 
   (GET "/interests" []
-    (map interest-json (nn/find "node-type" "interest")))
+    (map standard-json (nn/find "node-type" "interest")))
 
   (POST "/places" [:as req]
     (create-from-body req :place place-json true))
