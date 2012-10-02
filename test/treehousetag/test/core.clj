@@ -23,3 +23,8 @@
   (request :post (str "/users/" id "/children") {:id id} {:birthday "2010-04-21"}) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
   (against-background (around :facts (let [id ((last (request :post "/users" nil {:email "test1@verify.me" :latitude 30 :longitude 25})) "id")] ?form))))
 
+(fact "GET /children/:id retrieves an existing child node"
+  (request :get (str "/children/" child-id) {:id child-id} nil) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
+  (against-background (around :facts (let [id ((last (request :post "/users" nil {:email "test1@verify.me" :latitude 30 :longitude 25})) "id")
+                                           child-id ((last (request :post (str "/users/" id "/children") {:id id} {:birthday "2010-04-21"})) "id")] ?form))))
+
