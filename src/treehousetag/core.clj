@@ -12,7 +12,7 @@
 
 (nrest/connect! "http://localhost:7474/db/data/")
 
-(nr/create-index "node-type")
+(nn/create-index "node-type")
 (nsp/add-simple-point-layer "location")
 
 ;;
@@ -58,7 +58,9 @@
     (generate-string (merge {:id (:id node) :deals deals :interests interests} (preprocess-out :business (:data node))))))
 
 (defn- default-json [node]
-  (generate-string (merge {:id (:id node)} (preprocess-out :default (:data node)))))
+  (if (sequential? node)
+    (generate-string (map #(merge {:id (:id %)} (preprocess-out :default (:data %))) node))
+    (generate-string (merge {:id (:id node)} (preprocess-out :default (:data node))))))
 
 (defn- create-from-body
   ([req type json-func spatial]
@@ -111,7 +113,7 @@
     (create-from-body req :interest default-json false))
 
   (GET "/interests" []
-    (map default-json (nn/find "node-type" "interest")))
+    (default-json (nn/find "node-type" "node-type" "interest")))
 
   (POST "/places" [:as req]
     (create-from-body req :place place-json true))
