@@ -4,6 +4,7 @@
                  [cheshire "4.0.3"]
                  [compojure "1.1.3"]
                  [clojurewerkz/neocons "1.1.0-beta1"]
+                 [clj-time "0.4.4"]
                  [midje "1.4.0"]]
   :plugins [[lein-ring "0.7.1"]
             [lein-midje "2.0.0-SNAPSHOT"]]
