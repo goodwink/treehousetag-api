@@ -127,5 +127,5 @@
   (POST "/businesses" [:as req]
     (create-from-body req :business business-json false))
 
-  (PUT "/businesses/:id/deals" [id :as req]
+  (POST "/businesses/:id/deals" [id :as req]
     (create-from-body id req :deal default-json false)))

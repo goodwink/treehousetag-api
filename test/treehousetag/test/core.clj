@@ -43,6 +43,26 @@
                                            child-id ((last (request :post (str "/users/" id "/children") {:id id} {:birthday "2010-03-21"})) "id")
                                            interest-id ((last (request :post "/interests" nil {:name "bowling"})) "id")] ?form))))
 
-(fact "GET /interests"
+(fact "GET /interests retrieves all interests"
   (request :get "/interests" nil nil) => (contains [200 (contains #{(contains {"id" id "type" "interest" "name" "bowling"})})])
   (against-background (around :facts (let [id ((last (request :post "/interests" nil {:name "bowling"})) "id")] ?form))))
+
+(fact "POST /places creates a place node"
+  (request :post "/places" nil {:name "park" :latitude 30 :longitude 25}) => (contains [200 (contains {"id" pos? "type" "place" "name" "park"})]))
+
+(fact "PUT /places/:id/interests/:interest-id tags a place with an interest"
+  (request :put (str "/places/" id "/interests/" interest-id) {:id id :interest-id interest-id} nil) => (contains [200 (contains {"id" id "interests" (contains #{interest-id})})])
+  (against-background (around :facts (let [id ((last (request :post "/places" nil {:name "park" :latitude 30 :longitude 25})) "id")
+                                           interest-id ((last (request :post "/interests" nil {:name "bowling"})) "id")] ?form))))
+
+(fact "POST /businesses creates a business node"
+  (request :post "/businesses" nil {:name "Tom's Tambourines"}) => (contains [200 (contains {"id" pos? "type" "business" "name" "Tom's Tambourines"})]))
+
+(fact "PUT /places/:id/businesses/:business-id associate a place with a business"
+  (request :put (str "/places/" id "/businesses/" business-id) {:id id :business-id business-id} nil) => (contains [200 (contains {"id" id "businesses" (contains #{business-id})})])
+  (against-background (around :facts (let [id ((last (request :post "/places" nil {:name "park" :latitude 30 :longitude 25})) "id")
+                                           business-id ((last (request :post "/businesses" nil {:name "Tom's Tambourines"})) "id")] ?form))))
+
+(fact "POST /businesses/:id/deals creates a deal for a business"
+  (request :post (str "/businesses/" id "/deals") {:id id} {:discount "10%"}) => (contains [200 (contains {"type" "deal" "discount" "10%"})])
+  (against-background (around :facts (let [id ((last (request :post "/businesses" nil {:name "Tom's Tambourines"})) "id")] ?form))))
