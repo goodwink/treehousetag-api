@@ -7,6 +7,7 @@
             [clojurewerkz.neocons.rest.nodes :as nn]
             [clojurewerkz.neocons.rest.relationships :as nr]
             [clojurewerkz.neocons.rest.spatial :as nsp]
+            [clojurewerkz.neocons.rest.cypher :as cypher]
             [compojure.route :as route]
             [clj-time.format :as time]
             [crypto.random :as random])
@@ -102,6 +103,41 @@
       (:id node)
       nil)))
 
+(defn- can-read [principal-id item-id]
+  (or
+    (= principal-id item-id)
+    (>
+      (get
+        (first
+          (cypher/tquery
+            (str
+              "START principal=node({pid}), item=node({iid}) "
+              "MATCH (item)<-[c?:child]-(principal)<-[f?:friend]-(item) "
+              "WHERE c IS NOT null OR f IS NOT null "
+              "RETURN count(coalesce(c, f)) AS num")
+            {:pid principal-id :iid item-id})) "num")
+      0)))
+
+(defn- can-mutate [principal-id item-id]
+  (or
+    (= principal-id item-id)
+    (>
+      (get
+        (first
+          (cypher/tquery
+            (str
+              "START principal=node({pid}), item=node({iid}) "
+              "MATCH (principal)-[c:child]->(item) "
+              "RETURN count(c) AS num")
+            {:pid principal-id :iid item-id})) "num")
+      0)))
+
+(defn- authorize [{method :request-method current-user-id :current-user-id} id func & args]
+  (let [auth-func (if (= method :get) can-read can-mutate)]
+    (if (auth-func current-user-id (Integer. id))
+      (apply func args)
+      {:status 403})))
+
 (def sessions (ref {}))
 
 ;;
@@ -109,23 +145,23 @@
 ;;
 
 (defroutes api-routes
-  (GET "/users/:id" [id]
-    (user-json (nn/get (Long/parseLong id))))
+  (GET "/users/:id" [id :as req]
+    (authorize req id user-json (nn/get (Long/parseLong id))))
 
-  (PUT "/users/:id/friends/:friend-id" [id friend-id]
-    (attach-by-ids :friend id friend-id user-json))
+  (PUT "/users/:id/friends/:friend-id" [id friend-id :as req]
+    (authorize req id attach-by-ids :friend id friend-id user-json))
 
   (POST "/users/:id/children" [id :as req]
-    (create-from-body id req :child child-json false))
+    (authorize req id create-from-body id req :child child-json false))
 
-  (GET "/children/:id" [id]
-    (child-json (nn/get (Long/parseLong id))))
+  (GET "/children/:id" [id :as req]
+    (authorize req id child-json (nn/get (Long/parseLong id))))
 
-  (PUT "/children/:id/friends/:friend-id" [id friend-id]
-    (attach-by-ids :friend id friend-id child-json))
+  (PUT "/children/:id/friends/:friend-id" [id friend-id :as req]
+    (authorize req id attach-by-ids :friend id friend-id child-json))
 
-  (PUT "/children/:id/interests/:interest-id" [id interest-id]
-    (attach-by-ids :interest id interest-id child-json))
+  (PUT "/children/:id/interests/:interest-id" [id interest-id :as req]
+    (authorize req id attach-by-ids :interest id interest-id child-json))
 
   (POST "/interests" [:as req]
     (create-from-body req :interest default-json false))
@@ -150,9 +186,10 @@
 
 (defn authentication-middleware [app]
   (fn [req]
-    (if (not (nil? (get @sessions ((:headers req) "x-auth-token"))))
-      (app req)
-      {:status 403})))
+    (let [id (get @sessions ((:headers req) "x-auth-token"))]
+      (if (not (nil? id))
+        (app (assoc req :current-user-id id))
+        {:status 401}))))
 
 (defroutes main-routes
   (POST "/users" [:as req]
@@ -169,7 +206,7 @@
           (dosync
             (alter sessions #(assoc % token user-id)))
           (generate-string {:token token}))
-        {:status 403})))
+        {:status 401})))
 
   (context "/api" request
     (-> api-routes authentication-middleware)))
