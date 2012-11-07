@@ -151,8 +151,8 @@
   (PUT "/users/:id/friends/:friend-id" [id friend-id :as req]
     (authorize req id attach-by-ids :friend id friend-id user-json))
 
-  (POST "/users/:id/children" [id :as req]
-    (authorize req id create-from-body id req :child child-json false))
+  (POST "/children" [:as req]
+    (authorize req (:current-user-id req) create-from-body (:current-user-id req) req :child child-json false))
 
   (GET "/children/:id" [id :as req]
     (authorize req id child-json (nn/get (Long/parseLong id))))
