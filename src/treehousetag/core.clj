@@ -208,5 +208,4 @@
           (generate-string {:token token}))
         {:status 401})))
 
-  (context "/api" request
-    (-> api-routes authentication-middleware)))
+  (-> api-routes authentication-middleware))

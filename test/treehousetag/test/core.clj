@@ -19,47 +19,47 @@
   (request main-routes :post "/users" nil {:email "test@verify.me" :password "test" :latitude 30 :longitude 25}) => (contains [200 (contains {"id" pos? "type" "user" "email" "test@verify.me"})]))
 
 (fact "API route authentication works"
-  (request-authenticated main-routes :get (str "/api/users/" id) token {:id id} nil) => (contains [200 (contains {"id" id "type" "user" "email" "test2@verify.me"})])
+  (request-authenticated main-routes :get (str "/users/" id) token {:id id} nil) => (contains [200 (contains {"id" id "type" "user" "email" "test2@verify.me"})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test2@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test2@verify.me" :password "test"})) "token")] ?form))))
 
 (fact "GET /users/:id retrieves an existing user node"
-  (request-authenticated main-routes :get (str "/api/users/" id) token {:id id} nil) => (contains [200 (contains {"id" id "type" "user" "email" "test2@verify.me"})])
+  (request-authenticated main-routes :get (str "/users/" id) token {:id id} nil) => (contains [200 (contains {"id" id "type" "user" "email" "test2@verify.me"})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test2@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test2@verify.me" :password "test"})) "token")] ?form))))
 
 (fact "PUT /users/:id/friends/:friend-id makes friends"
-  (request-authenticated main-routes :put (str "/api/users/" id "/friends/" friend-id) token {:id id :friend-id friend-id} nil) => (contains [200 (contains {"id" id "friends" (contains #{friend-id})})])
+  (request-authenticated main-routes :put (str "/users/" id "/friends/" friend-id) token {:id id :friend-id friend-id} nil) => (contains [200 (contains {"id" id "friends" (contains #{friend-id})})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test3@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test3@verify.me" :password "test"})) "token")
                                            friend-id ((last (request main-routes :post "/users" nil {:email "test4@verify.me" :password "test" :latitude 30 :longitude 25})) "id")] ?form))))
 
 (fact "POST /users/:id/children makes children"
-  (request-authenticated main-routes :post (str "/api/users/" id "/children") token {:id id} {:birthday "2010-04-21"}) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
+  (request-authenticated main-routes :post (str "/users/" id "/children") token {:id id} {:birthday "2010-04-21"}) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test5@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test5@verify.me" :password "test"})) "token")] ?form))))
 
 (fact "GET /children/:id retrieves an existing child node"
-  (request-authenticated main-routes :get (str "/api/children/" child-id) token {:id child-id} nil) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
+  (request-authenticated main-routes :get (str "/children/" child-id) token {:id child-id} nil) => (contains [200 (contains {"type" "child" "birthday" "2010-04-21"})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test6@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test6@verify.me" :password "test"})) "token")
-                                           child-id ((last (request-authenticated main-routes :post (str "/api/users/" id "/children") token {:id id} {:birthday "2010-04-21"})) "id")] ?form))))
+                                           child-id ((last (request-authenticated main-routes :post (str "/users/" id "/children") token {:id id} {:birthday "2010-04-21"})) "id")] ?form))))
 
 (fact "PUT /children/:id/friends/:friend-id makes friends for children"
-  (request-authenticated main-routes :put (str "/api/users/" child-id "/friends/" friend-id) token {:id id :friend-id friend-id} nil) => (contains [200 (contains {"id" child-id "friends" (contains #{friend-id})})])
+  (request-authenticated main-routes :put (str "/users/" child-id "/friends/" friend-id) token {:id id :friend-id friend-id} nil) => (contains [200 (contains {"id" child-id "friends" (contains #{friend-id})})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test7@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test7@verify.me" :password "test"})) "token")
-                                           child-id ((last (request-authenticated main-routes :post (str "/api/users/" id "/children") token {:id id} {:birthday "2010-03-21"})) "id")
-                                           friend-id ((last (request-authenticated main-routes :post (str "/api/users/" id "/children") token {:id id} {:birthday "2010-04-21"})) "id")] ?form))))
+                                           child-id ((last (request-authenticated main-routes :post (str "/users/" id "/children") token {:id id} {:birthday "2010-03-21"})) "id")
+                                           friend-id ((last (request-authenticated main-routes :post (str "/users/" id "/children") token {:id id} {:birthday "2010-04-21"})) "id")] ?form))))
 
 (fact "POST /interests creates an interest node"
   (request api-routes :post "/interests" nil {:name "bowling"}) => (contains [200 (contains {"id" pos? "type" "interest" "name" "bowling"})]))
 
 (fact "PUT /children/:id/interests/:interest-id adds an interest to a child"
-  (request-authenticated main-routes :put (str "/api/children/" child-id "/interests/" interest-id) token {:id child-id :interest-id interest-id} nil) => (contains [200 (contains {"id" child-id "interests" (contains #{interest-id})})])
+  (request-authenticated main-routes :put (str "/children/" child-id "/interests/" interest-id) token {:id child-id :interest-id interest-id} nil) => (contains [200 (contains {"id" child-id "interests" (contains #{interest-id})})])
   (against-background (around :facts (let [id ((last (request main-routes :post "/users" nil {:email "test8@verify.me" :password "test" :latitude 30 :longitude 25})) "id")
                                            token ((last (request main-routes :post "/sessions" nil {:email "test8@verify.me" :password "test"})) "token")
-                                           child-id ((last (request-authenticated main-routes :post (str "/api/users/" id "/children") token {:id id} {:birthday "2010-03-21"})) "id")
+                                           child-id ((last (request-authenticated main-routes :post (str "/users/" id "/children") token {:id id} {:birthday "2010-03-21"})) "id")
                                            interest-id ((last (request api-routes :post "/interests" nil {:name "bowling"})) "id")] ?form))))
 
 (fact "GET /interests retrieves all interests"
