@@ -63,7 +63,7 @@
                                            interest-id ((last (request api-routes :post "/interests" nil {:name "bowling"})) "id")] ?form))))
 
 (fact "GET /interests retrieves all interests"
-  (request api-routes :get "/interests" nil nil) => (contains [200 (contains #{(contains {"id" id "type" "interest" "name" "bowling"})})])
+  (request main-routes :get "/interests" nil nil) => (contains [200 (contains #{(contains {"id" id "type" "interest" "name" "bowling"})})])
   (against-background (around :facts (let [id ((last (request api-routes :post "/interests" nil {:name "bowling"})) "id")] ?form))))
 
 (fact "POST /places creates a place node"

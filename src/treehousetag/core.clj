@@ -33,9 +33,11 @@
     (Long/parseLong (last (split (:end relationship) #"/")))
     (Long/parseLong (last (split (:start relationship) #"/")))))
 
+(def date-formatter (time/formatter "MM/dd/yyyy"))
+
 (defn- preprocess-in [type body]
   (case type
-    :child (update-in body ["birthday"] #(to-long (time/parse (time/formatters :date) %)))
+    :child (update-in (dissoc body :interests) ["birthday"] #(to-long (time/parse date-formatter %)))
     :user (update-in body ["password"] #(SCryptUtil/scrypt (str "1b4ea9d4b23595a3853b1c69e389d3e9" %) 65536 8 1))
     body))
 
@@ -73,12 +75,19 @@
     (generate-string (map #(merge {:id (:id %)} (preprocess-out :default (:data %))) node))
     (generate-string (merge {:id (:id node)} (preprocess-out :default (:data node))))))
 
+(defn- attach-by-ids [type start end json-func]
+  (do
+    ; FIXME: Check to see if relationship already exists
+    (nr/create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
+    (json-func (nn/get (Long/parseLong start)))))
+
 (defn- create-from-body
   ([req type json-func spatial]
     (let [body (parse-string (:body req))
           item (nn/create (assoc (preprocess-in type body) :type type))]
       (nn/add-to-index item "node-type" "node-type" (name type))
       (if spatial (nsp/add-node-to-layer "location" item))
+      (if (= type :child) (doseq [interest (:interests body)] (attach-by-ids :interest (:id item) interest json-func)))
       (json-func item)))
   ([id req type json-func spatial]
     (let [body (parse-string (:body req))
@@ -88,18 +97,13 @@
       (nr/create {:id id} {:id (:id item)} type)
       (json-func (nn/get (:id item))))))
 
-(defn- attach-by-ids [type start end json-func]
-  (do
-    (nr/create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
-    (json-func (nn/get (Long/parseLong start)))))
-
 (defn- authenticate [req]
   (let [body (parse-string (:body req))
         email (get body "email")
         password (str "1b4ea9d4b23595a3853b1c69e389d3e9" (get body "password"))
         node (first (nn/find "email" "email" email))
         user (:data node)]
-    (if (SCryptUtil/check password (:password user))
+    (if (and (not (nil? user)) (SCryptUtil/check password (:password user)))
       (:id node)
       nil)))
 
@@ -166,9 +170,6 @@
   (POST "/interests" [:as req]
     (create-from-body req :interest default-json false))
 
-  (GET "/interests" []
-    (default-json (nn/find "node-type" "node-type" "interest")))
-
   (POST "/places" [:as req]
     (create-from-body req :place place-json true))
 
@@ -199,13 +200,28 @@
       (nsp/add-node-to-layer "location" user)
       (user-json user)))
 
+  (GET "/interests" []
+    (default-json (nn/find "node-type" "node-type" "interest")))
+
   (POST "/sessions" [:as req]
     (let [user-id (authenticate req)]
       (if (not (nil? user-id))
         (let [token (random/base64 64)]
           (dosync
             (alter sessions #(assoc % token user-id)))
-          (generate-string {:token token}))
+          (generate-string {:id user-id :token token}))
         {:status 401})))
 
   (-> api-routes authentication-middleware))
+
+(defn- slurp-nonstring [obj]
+  (if (string? obj)
+    obj
+    (slurp obj)))
+
+(defn slurper [app]
+  (fn [req]
+    (app (update-in req [:body] slurp-nonstring))))
+
+(def application
+  (-> main-routes slurper))
