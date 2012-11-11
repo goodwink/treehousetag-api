@@ -4,10 +4,12 @@
         [clj-time.coerce :only (to-long from-long)]
         [clojure.string :only (split)])
   (:require [clojurewerkz.neocons.rest :as nrest]
+            [clojurewerkz.neocons.rest.records :as nrec]
             [clojurewerkz.neocons.rest.nodes :as nn]
             [clojurewerkz.neocons.rest.relationships :as nr]
             [clojurewerkz.neocons.rest.spatial :as nsp]
             [clojurewerkz.neocons.rest.cypher :as cypher]
+            [clojurewerkz.neocons.rest.helpers :as nhelper]
             [compojure.route :as route]
             [clj-time.format :as time]
             [crypto.random :as random])
@@ -22,7 +24,8 @@
 
 ;(nn/create-index "node-type")
 ;(nn/create-index "email" {:unique true})
-(nsp/add-simple-point-layer "location")
+;(nsp/add-simple-point-layer "location")
+;(nn/create-index "location" {:provider "spatial"})
 
 ;;
 ;; Implementation
@@ -60,10 +63,13 @@
         interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
     (generate-string (merge {:id (:id node) :friends friends :friends-of friends-of :parents parents :interests interests} (preprocess-out :child (:data node))))))
 
-(defn- place-json [node]
+(defn- place-map [node]
   (let [businesses (map (partial relationship-other-id node) (nr/outgoing-for node :types [:business]))
         interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
-    (generate-string (merge {:id (:id node) :businesses businesses :interests interests} (preprocess-out :place (:data node))))))
+    (merge {:id (:id node) :businesses businesses :interests interests} (preprocess-out :place (:data node)))))
+
+(defn- place-json [node]
+  (generate-string (place-map node)))
 
 (defn- business-json [node]
   (let [deals (map (partial relationship-other-id node) (nr/outgoing-for node :types [:deal]))
@@ -77,8 +83,7 @@
 
 (defn- attach-by-ids [type start end json-func]
   (do
-    ; FIXME: Check to see if relationship already exists
-    (nr/create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
+    (nr/maybe-create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
     (json-func (nn/get (Long/parseLong start)))))
 
 (defn- create-from-body
@@ -96,6 +101,22 @@
       (if spatial (nsp/add-node-to-layer "location" item))
       (nr/create {:id id} {:id (:id item)} type)
       (json-func (nn/get (:id item))))))
+
+(defn- recommendations [principal distance]
+  (let [loc (str
+              "withinDistance:["
+              (:latitude (:data principal)) ", "
+              (:longitude (:data principal)) ", "
+              (Double/parseDouble distance) "]")]
+    (generate-string
+      (map
+        #(hash-map :child-id (nhelper/extract-id (:self (get % "child"))) :place (place-map (nrec/instantiate-node-from (get % "place"))))
+        (cypher/tquery
+          (str
+            "START place=node:location({loc}), principal=node({pid}) "
+            "MATCH (principal)-[:child]->(child)-[:interest]->()<-[:interest]-(place) "
+            "RETURN child, place")
+          {:loc loc :pid (:id principal)})))))
 
 (defn- authenticate [req]
   (let [body (parse-string (:body req))
@@ -183,7 +204,10 @@
     (create-from-body req :business business-json false))
 
   (POST "/businesses/:id/deals" [id :as req]
-    (create-from-body id req :deal default-json false)))
+    (create-from-body id req :deal default-json false))
+
+  (GET "/recommendations" [distance :as req]
+    (recommendations (nn/get (:current-user-id req)) (or distance "40.0"))))
 
 (defn authentication-middleware [app]
   (fn [req]
