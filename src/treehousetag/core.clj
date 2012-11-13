@@ -11,6 +11,7 @@
             [clojurewerkz.neocons.rest.cypher :as cypher]
             [clojurewerkz.neocons.rest.helpers :as nhelper]
             [compojure.route :as route]
+            [compojure.handler :as handler]
             [clj-time.format :as time]
             [crypto.random :as random])
   (:import (com.lambdaworks.crypto SCryptUtil)))
@@ -148,6 +149,17 @@
           "RETURN friend")
         {:pid principal-id}))))
 
+(defn- suggested-friends [principal-id]
+  (generate-string
+    (map
+      #(user-map (nrec/instantiate-node-from (get % "suggestion")))
+      (cypher/tquery
+        (str
+          "START principal=node({pid}) "
+          "MATCH (principal)<-[:friend]-(suggestion) "
+          "RETURN suggestion")
+        {:pid principal-id}))))
+
 (defn- authenticate [req]
   (let [body (parse-string (:body req))
         email (get body "email")
@@ -212,8 +224,8 @@
   (POST "/friends" [:as req]
     (authorize req (:current-user-id req) add-or-invite-friend req))
 
-  (GET "/friends" [:as req]
-    (authorize req (:current-user-id req) friends (:current-user-id req)))
+  (GET "/friends" [suggested :as req]
+    (authorize req (:current-user-id req) (if suggested suggested-friends friends) (:current-user-id req)))
 
   (GET "/children/:id" [id :as req]
     (authorize req id child-json (nn/get (coerce-numeric id))))
@@ -284,4 +296,4 @@
     (app (update-in req [:body] slurp-nonstring))))
 
 (def application
-  (-> main-routes slurper))
+  (-> (-> main-routes slurper) handler/api))
