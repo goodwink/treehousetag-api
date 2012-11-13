@@ -102,6 +102,17 @@
       (nr/create {:id id} {:id (:id item)} type)
       (json-func (nn/get (:id item))))))
 
+(defn- add-or-invite-friend [req]
+  (let [body (dbg (parse-string (:body req)))
+        user-id (:current-user-id req)
+        first-name (:first-name body)
+        email (:email body)
+        node (first (nn/find "email" "email" email))
+        friend (:data node)]
+    (if (not (nil? friend))
+      (attach-by-ids :friend user-id (:id node) user-json)
+      (generate-string {:status "sent"})))) ;FIXME: Send email invitation
+
 (defn- recommendations [principal distance]
   (let [loc (str
               "withinDistance:["
@@ -178,6 +189,12 @@
 
   (POST "/children" [:as req]
     (authorize req (:current-user-id req) create-from-body (:current-user-id req) req :child child-json false))
+
+  (POST "/friends" [:as req]
+    (authorize req (:current-user-id req) add-or-invite-friend req))
+
+  (GET "/friends" [:as req]
+    (authorize req (:current-user-id req) map user-json (nr/outgoing-for (nn/get (:current-user-id req)) :types [:friend])))
 
   (GET "/children/:id" [id :as req]
     (authorize req id child-json (nn/get (Long/parseLong id))))
