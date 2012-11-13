@@ -31,6 +31,9 @@
 ;; Implementation
 ;;
 
+(defn- coerce-numeric [value]
+  (if (number? value) value (Long/parseLong value)))
+
 (defn- relationship-other-id [node relationship]
   (if (= (:start relationship) (:location-uri node))
     (Long/parseLong (last (split (:end relationship) #"/")))
@@ -50,11 +53,14 @@
     :user (dissoc body :password)
     body))
 
-(defn- user-json [node]
+(defn- user-map [node]
   (let [friends (map (partial relationship-other-id node) (nr/outgoing-for node :types [:friend]))
         friends-of (map (partial relationship-other-id node) (nr/incoming-for node :types [:friend]))
         children (map (partial relationship-other-id node) (nr/outgoing-for node :types [:child]))]
-    (generate-string (merge {:id (:id node) :friends friends :friends-of friends-of :children children} (preprocess-out :user (:data node))))))
+    (merge {:id (:id node) :friends friends :friends-of friends-of :children children} (preprocess-out :user (:data node)))))
+
+(defn- user-json [node]
+  (generate-string (user-map node)))
 
 (defn- child-json [node]
   (let [friends (map (partial relationship-other-id node) (nr/outgoing-for node :types [:friend]))
@@ -83,8 +89,8 @@
 
 (defn- attach-by-ids [type start end json-func]
   (do
-    (nr/maybe-create {:id (Long/parseLong start)} {:id (Long/parseLong end)} type)
-    (json-func (nn/get (Long/parseLong start)))))
+    (nr/maybe-create {:id (coerce-numeric start)} {:id (coerce-numeric end)} type)
+    (json-func (nn/get (coerce-numeric start)))))
 
 (defn- create-from-body
   ([req type json-func spatial]
@@ -105,12 +111,14 @@
 (defn- add-or-invite-friend [req]
   (let [body (dbg (parse-string (:body req)))
         user-id (:current-user-id req)
-        first-name (:first-name body)
-        email (:email body)
+        first-name (body "firstName")
+        email (body "email")
         node (first (nn/find "email" "email" email))
         friend (:data node)]
     (if (not (nil? friend))
-      (attach-by-ids :friend user-id (:id node) user-json)
+      (do
+        (attach-by-ids :friend user-id (:id node) user-json)
+        (user-json node))
       (generate-string {:status "sent"})))) ;FIXME: Send email invitation
 
 (defn- recommendations [principal distance]
@@ -128,6 +136,17 @@
             "MATCH (principal)-[:child]->(child)-[:interest]->()<-[:interest]-(place) "
             "RETURN child, place")
           {:loc loc :pid (:id principal)})))))
+
+(defn- friends [principal-id]
+  (generate-string
+    (map
+      #(user-map (nrec/instantiate-node-from (get % "friend")))
+      (cypher/tquery
+        (str
+          "START principal=node({pid}) "
+          "MATCH (principal)-[:friend]->(friend) "
+          "RETURN friend")
+        {:pid principal-id}))))
 
 (defn- authenticate [req]
   (let [body (parse-string (:body req))
@@ -182,7 +201,7 @@
 
 (defroutes api-routes
   (GET "/users/:id" [id :as req]
-    (authorize req id user-json (nn/get (Long/parseLong id))))
+    (authorize req id user-json (nn/get (coerce-numeric id))))
 
   (PUT "/users/:id/friends/:friend-id" [id friend-id :as req]
     (authorize req id attach-by-ids :friend id friend-id user-json))
@@ -194,10 +213,10 @@
     (authorize req (:current-user-id req) add-or-invite-friend req))
 
   (GET "/friends" [:as req]
-    (authorize req (:current-user-id req) map user-json (nr/outgoing-for (nn/get (:current-user-id req)) :types [:friend])))
+    (authorize req (:current-user-id req) friends (:current-user-id req)))
 
   (GET "/children/:id" [id :as req]
-    (authorize req id child-json (nn/get (Long/parseLong id))))
+    (authorize req id child-json (nn/get (coerce-numeric id))))
 
   (PUT "/children/:id/friends/:friend-id" [id friend-id :as req]
     (authorize req id attach-by-ids :friend id friend-id child-json))
