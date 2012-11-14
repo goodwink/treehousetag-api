@@ -13,7 +13,8 @@
             [compojure.route :as route]
             [compojure.handler :as handler]
             [clj-time.format :as time]
-            [crypto.random :as random])
+            [crypto.random :as random]
+            [taoensso.carmine :as redis])
   (:import (com.lambdaworks.crypto SCryptUtil)))
 
 (defmacro dbg [body]
@@ -22,6 +23,25 @@
      x#))
 
 (nrest/connect! "http://localhost:7474/db/data/")
+
+(def pool (redis/make-conn-pool :max-active 50))
+(def env (System/getenv))
+
+; Set up defaults for Redis connection parameters, but allow them to be
+; overridden by values in environment variables
+(def redis-host (or (get env "REDIS_HOST") "127.0.0.1"))
+(def redis-port (or (get env "REDIS_PORT") 6379))
+(def redis-timeout (or (get env "REDIS_TIMEOUT") 4000))
+(def redis-db (or (get env "REDIS_DB") 0))
+
+(def server-spec (redis/make-conn-spec
+                    :host     redis-host
+                    :port     redis-port
+                    :timeout  redis-timeout
+                    :db       redis-db))
+
+(defmacro redis
+  [& body] `(redis/with-conn pool server-spec ~@body))
 
 ;(nn/create-index "node-type")
 ;(nn/create-index "email" {:unique true})
@@ -208,8 +228,6 @@
       (apply func args)
       {:status 403})))
 
-(def sessions (ref {}))
-
 ;;
 ;; API
 ;;
@@ -262,7 +280,7 @@
 
 (defn authentication-middleware [app]
   (fn [req]
-    (let [id (get @sessions ((:headers req) "x-auth-token"))]
+    (let [id (coerce-numeric (redis (redis/get ((:headers req) "x-auth-token"))))]
       (if (not (nil? id))
         (app (assoc req :current-user-id id))
         {:status 401}))))
@@ -282,8 +300,8 @@
     (let [user-id (authenticate req)]
       (if (not (nil? user-id))
         (let [token (random/base64 64)]
-          (dosync
-            (alter sessions #(assoc % token user-id)))
+          (redis
+            (redis/set token (str user-id)))
           (generate-string {:id user-id :token token}))
         {:status 401})))
 
