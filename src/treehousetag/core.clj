@@ -156,7 +156,10 @@
       (cypher/tquery
         (str
           "START principal=node({pid}) "
-          "MATCH (principal)<-[:friend]-(suggestion) "
+          "MATCH "
+          "  (principal)<-[:friend]-(suggestion), "
+          "  (principal)-[r?:friend]->(suggestion) "
+          "WHERE r is null "
           "RETURN suggestion")
         {:pid principal-id}))))
 
