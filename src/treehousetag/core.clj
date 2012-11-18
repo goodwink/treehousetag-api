@@ -201,6 +201,18 @@
           "RETURN child, event")
         {:pid (:id principal)}))))
 
+(defn- rsvp [principal-id event-id rsvp]
+  (generate-string
+    (map
+      #(hash-map :childId (nhelper/extract-id (:self (get % "child"))) :event (event-map (nrec/instantiate-node-from (get % "event"))))
+      (cypher/tquery
+        (str
+          "START principal=node({pid}), event=node({eid}) "
+          "MATCH (principal)-[:child]->(child)<-[invitation:event]-(event) "
+          "SET invitation.rsvp = {rsvp} "
+          "RETURN child, event")
+        {:pid principal-id :eid event-id :rsvp rsvp}))))
+
 (defn- friends [principal-id]
   (generate-string
     (map
@@ -307,6 +319,9 @@
     (if accepted
       (accepted-events (nn/get (:current-user-id req)))
       (invited-events (nn/get (:current-user-id req)))))
+
+  (PUT "/events/:id" [id :as req]
+    (rsvp (:current-user-id req) (coerce-numeric id) (get (parse-string (:body req)) "rsvp")))
 
   (POST "/interests" [:as req]
     (create-from-body req :interest default-json false))
