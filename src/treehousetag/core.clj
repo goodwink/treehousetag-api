@@ -98,6 +98,25 @@
 (defn- place-json [node]
   (generate-string (place-map node)))
 
+(defn- event-map [node]
+  (let [invitations (map (partial relationship-other-id node) (nr/outgoing-for node :types [:event]))
+        owners (map (partial relationship-other-id node) (nr/incoming-for node :types [:event]))
+        interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
+    (merge {:id (:id node) :invitations invitations :owners owners :interests interests} (preprocess-out :event (:data node)))))
+
+(defn- event-json [node]
+  (generate-string (event-map node)))
+
+(defn- recommendation-map [node]
+  (let [invitations (map (partial relationship-other-id node) (nr/outgoing-for node :types [:event]))
+        owners (map (partial relationship-other-id node) (nr/incoming-for node :types [:event]))
+        businesses (map (partial relationship-other-id node) (nr/outgoing-for node :types [:business]))
+        interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
+    (merge {:id (:id node) :invitations invitations :owners owners :businesses businesses :interests interests} (preprocess-out :recommendation (:data node)))))
+
+(defn- recommendation-json [node]
+  (generate-string (place-map node)))
+
 (defn- business-json [node]
   (let [deals (map (partial relationship-other-id node) (nr/outgoing-for node :types [:deal]))
         interests (map (partial relationship-other-id node) (nr/outgoing-for node :types [:interest]))]
@@ -150,13 +169,37 @@
               (Double/parseDouble distance) "]")]
     (generate-string
       (map
-        #(hash-map :child-id (nhelper/extract-id (:self (get % "child"))) :place (place-map (nrec/instantiate-node-from (get % "place"))))
+        #(hash-map :childId (nhelper/extract-id (:self (get % "child"))) :recommendation (recommendation-map (nrec/instantiate-node-from (get % "recommendation"))))
         (cypher/tquery
           (str
-            "START place=node:location({loc}), principal=node({pid}) "
-            "MATCH (principal)-[:child]->(child)-[:interest]->()<-[:interest]-(place) "
-            "RETURN child, place")
+            "START recommendation=node:location({loc}), principal=node({pid}) "
+            "MATCH (principal)-[:child]->(child)-[:interest]->()<-[:interest]-(recommendation) "
+            "RETURN child, recommendation")
           {:loc loc :pid (:id principal)})))))
+
+(defn- invited-events [principal]
+  (generate-string
+    (map
+      #(hash-map :childId (nhelper/extract-id (:self (get % "child"))) :event (event-map (nrec/instantiate-node-from (get % "event"))))
+      (cypher/tquery
+        (str
+          "START principal=node({pid}) "
+          "MATCH (principal)-[:child]->(child)<-[invitation:event]-(event) "
+          "WHERE invitation.rsvp? = false "
+          "RETURN child, event")
+        {:pid (:id principal)}))))
+
+(defn- accepted-events [principal]
+  (generate-string
+    (map
+      #(hash-map :childId (nhelper/extract-id (:self (get % "child"))) :event (event-map (nrec/instantiate-node-from (get % "event"))))
+      (cypher/tquery
+        (str
+          "START principal=node({pid}) "
+          "MATCH (principal)-[:child]->(child)<-[invitation:event]-(event) "
+          "WHERE invitation.rsvp! = true "
+          "RETURN child, event")
+        {:pid (:id principal)}))))
 
 (defn- friends [principal-id]
   (generate-string
@@ -256,6 +299,14 @@
 
   (PUT "/children/:id/interests/:interest-id" [id interest-id :as req]
     (authorize req id attach-by-ids :interest id interest-id child-json))
+
+  (POST "/events" [:as req]
+    (authorize req (:current-user-id req) create-from-body (:current-user-id req) req :event event-json true))
+
+  (GET "/events" [accepted :as req]
+    (if accepted
+      (accepted-events (nn/get (:current-user-id req)))
+      (invited-events (nn/get (:current-user-id req)))))
 
   (POST "/interests" [:as req]
     (create-from-body req :interest default-json false))
