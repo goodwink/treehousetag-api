@@ -174,6 +174,7 @@
           (str
             "START recommendation=node:location({loc}), principal=node({pid}) "
             "MATCH (principal)-[:child]->(child)-[:interest]->()<-[:interest]-(recommendation) "
+            "WHERE recommendation.public? = true "
             "RETURN child, recommendation")
           {:loc loc :pid (:id principal)})))))
 
